@@ -527,9 +527,10 @@ namespace NX {
     }
 
     PlayStatistics * PlayData::getStatisticsForUser(TitleID titleID, AccountUid userID) {
-        PdmPlayStatistics tmp;
+        PdmPlayStatistics tmp{};
         pdmqryQueryPlayStatisticsByApplicationIdAndUserAccountId(titleID, userID, false, &tmp);
-        PlayStatistics * stats = new PlayStatistics;
+        PlayStatistics * stats = new PlayStatistics{};
+        stats->titleID = titleID;
         if (tmp.first_timestamp_user != 0 && tmp.last_timestamp_user != 0) {
             stats->firstPlayed = tmp.first_timestamp_user;
             stats->lastPlayed = tmp.last_timestamp_user;
@@ -539,6 +540,37 @@ namespace NX {
                 stats->firstPlayed = (*it)->firstPlayed;
                 stats->lastPlayed = (*it)->lastPlayed;
             }
+        }
+
+        // The aggregate PDM statistics are not rebuilt when PlayEvent.dat is
+        // merged or restored. Prefer timestamps from the detailed event log so
+        // First/Last Played stay consistent with the activity shown elsewhere.
+        struct tm end = Utils::Time::getTmForCurrentTime();
+        std::vector<PD_Session> sessions = this->getPDSessions(titleID, userID, 0, std::mktime(&end));
+        u64 firstEventTimestamp = 0;
+        u64 lastEventTimestamp = 0;
+
+        for (const PD_Session & session : sessions) {
+            for (size_t i = session.index; i < session.index + session.num; i++) {
+                const PlayEvent * event = this->events[i];
+
+                if (event->eventType == Applet_Launch &&
+                    (firstEventTimestamp == 0 || event->clockTimestamp < firstEventTimestamp)) {
+                    firstEventTimestamp = event->clockTimestamp;
+                }
+
+                if ((event->eventType == Applet_Exit || event->eventType == Applet_OutFocus) &&
+                    event->clockTimestamp > lastEventTimestamp) {
+                    lastEventTimestamp = event->clockTimestamp;
+                }
+            }
+        }
+
+        if (firstEventTimestamp != 0) {
+            stats->firstPlayed = firstEventTimestamp;
+        }
+        if (lastEventTimestamp != 0) {
+            stats->lastPlayed = lastEventTimestamp;
         }
 
         stats->playtime = tmp.playtime / 1000 / 1000 / 1000; //the unit of playtime in PdmPlayStatistics is ns
