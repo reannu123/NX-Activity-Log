@@ -1,0 +1,41 @@
+name: Build patched NRO
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build NX-Activity-Log
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          clean: true
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Update libnx
+        run: |
+          git config --global --add safe.directory "*"
+          git clone --depth=1 https://github.com/switchbrew/libnx.git "${RUNNER_TEMP}/libnx"
+          make -C "${RUNNER_TEMP}/libnx" install -j"$(nproc)"
+        shell: bash
+
+      - name: Build
+        run: |
+          export DEVKITPRO=/opt/devkitpro
+          make -j"$(nproc)"
+        shell: bash
+
+      - name: Upload patched NRO
+        uses: actions/upload-artifact@v4
+        with:
+          name: NX-Activity-Log-v1.5.9-merged-history
+          path: sdcard/switch/NX-Activity-Log/NX-Activity-Log.nro
+          if-no-files-found: error
