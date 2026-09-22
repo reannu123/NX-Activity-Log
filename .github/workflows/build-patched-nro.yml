@@ -2,6 +2,11 @@ name: Build patched NRO
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/build-patched-nro.yml
 
 permissions:
   contents: read
